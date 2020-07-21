@@ -1,0 +1,1 @@
+I have worked with Python extensively for the past 22 months building backend services for two Deep Learning projects currently in production, also worked with constrained cloud environments like AWS lambda for one of the projects I mentioned.
