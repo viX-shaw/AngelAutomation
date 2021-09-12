@@ -18,6 +18,8 @@ from selenium.common.exceptions import NoSuchElementException, StaleElementRefer
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 
+from selenium.webdriver.support.ui import Select
+
 
 class Cupid():
     def __init__(self, browser):
@@ -118,7 +120,7 @@ class Cupid():
 
     def match_preferences(self, details, n_images):
         #Return True/False which will end up as Like/Pass
-        if n_images == 1:
+        if n_images <= 1:
             return False
         return True
 
@@ -186,6 +188,25 @@ class Cupid():
                     pass
         except Exception as ex:
             print("SEND INTRO TO LIKES EXCEPTION", ex)
+
+    def change_location(self, country_code, city):
+        self.browser.get(self.main_page + "/settings")
+        sleep(3)
+        self.browser.execute_script("window.scrollTo(0, document.body.scrollHeight/2);")
+        self.use_css_selector('div[class="settings-field-summary"] > button', click_element=True)
+        Select(self.use_css_selector('select[aria-label="Location country"]')).select_by_value(country_code)
+        self.use_css_selector(
+            'input[aria-label="City"]',
+            input_text=city        
+        )
+        self.use_css_selector(
+            'button[class="blue flatbutton settings-input-actions-save"]',
+            click_element=True
+        )
+        sleep(5)
+        self.browser.get(self.main_page + "/doubletake")
+
+
 if __name__ == "__main__":
     options = ChromeOptions()
     mobile_emulation = {
@@ -199,7 +220,12 @@ if __name__ == "__main__":
     cupid_auto_obj = Cupid(chrome)
     cupid_auto_obj.login()
     cupid_auto_obj.get_started()
-    # for u in range(20):
-    #     cupid_auto_obj.get_profile()
-    # cupid_auto_obj.send_intro_to_likes_who_are_online()
+    cupid_auto_obj.change_location('GB', 'london')
 
+    for u in range(2):
+        cupid_auto_obj.get_profile()
+    cupid_auto_obj.send_intro_to_likes_who_are_online()
+
+# /settings
+# select[aria-label="Location country"] > option[value="BR"] click
+# input[aria-label="City"] input text 
