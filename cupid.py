@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import pickle
+import socket
 import argparse
 import traceback
 from time import sleep
@@ -13,12 +14,21 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.wait import WebDriverWait
-from selenium.common.exceptions import NoSuchElementException, StaleElementReferenceException
+from selenium.common.exceptions import NoSuchElementException, StaleElementReferenceException, TimeoutException
 
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 
 from selenium.webdriver.support.ui import Select
+
+
+def checkForConnection(host="8.8.8.8", port=53):
+    try:
+        socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect((host, port))
+        return True
+    except socket.error as ex:
+        print(ex)
+        return False
 
 
 class Cupid():
@@ -34,10 +44,10 @@ class Cupid():
         self.main_page = "https://okcupid.com"
         self.cookies_path = "cupid.pkl"
         self.phone_no = open('mob_no.txt').read()
-        print(self.phone_no)
         self.arrows = None
         if os.path.isfile("cupid_arrows"):
             self.arrows = open("cupid_arrows", 'r').readlines()
+        print(self.arrows)
 
     def util_click(self, ele, sleep_time=1):
         sleep(sleep_time)
@@ -54,7 +64,7 @@ class Cupid():
     
     def use_css_selector(self, key, total_time=20, interval=5,     
                         click_element=False, input_text=None, siblings=False,
-                        extract_attribute=None):
+                        extract_attribute=None, click_enter=False):
         """
         Returns Element only when click_element and input_text are default values
         """
@@ -75,7 +85,10 @@ class Cupid():
             if click_element:
                 return self.util_click(ele, 2)
             if input_text:
-                return self.util_input(ele, input_text)
+                self.util_input(ele, input_text)
+            if click_enter:
+                print("pressing enter")
+                ele.send_keys(Keys.RETURN)
         return ele
 
     def login(self):
@@ -94,7 +107,7 @@ class Cupid():
             self.use_css_selector('button[class="login-actions-button login-actions-button-sms"]',
                                 click_element=True)
             self.use_css_selector('input[name="phone-number"]', input_text=self.phone_no)
-            self.use_css_selector('input[class="login-actions-button"]', click_element=True)
+            self.use_css_selector('button[class="login-actions-button"]', click_element=True)
             otp = input("Enter the OTP\n >>")
             otp_input_eles = [ \
                 self.use_css_selector(f'div[class="code-inputs-digits"] > input[data-index="{e}"]') for e in range(6)
@@ -102,7 +115,7 @@ class Cupid():
             for idx, ele in enumerate(otp_input_eles):
                 self.util_input(ele, otp[idx])
             self.use_css_selector('button[class="login-actions-button"]', click_element=True)
-            sleep(10)
+            sleep(40)
             cookies = self.browser.get_cookies()
             pickle.dump(cookies, open(self.cookies_path, 'wb'))
             print("Saved Cookies!!")
@@ -120,22 +133,22 @@ class Cupid():
 
     def match_preferences(self, details, n_images):
         #Return True/False which will end up as Like/Pass
-        if n_images <= 1:
+        if n_images <= 4:
             return False
         return True
 
     def send_intro(self, already_liked):
         print("LIKE..")
-        if already_liked:
-            self.use_css_selector('button[aria-label="Message"]', click_element=True)
-        else:
-            self.use_css_selector('button[aria-label="Like"]', click_element=True)
-            self.use_css_selector(
-                'button[class="profile-buttons-modal-buttons-cta blue-new flatbutton"]',
-                click_element=True)
         try:
-            self.use_css_selector('div[class="messenger-composer-wrapper"] > textarea[placeholder="Say something..."]',
-                                    input_text=self.arrows[randint(0, len(self.arrows)-1)])
+            if already_liked:
+                self.use_css_selector('button[aria-label="Message"]', click_element=True)
+            else:
+                self.use_css_selector('button[aria-label="Like"]', click_element=True)
+                self.use_css_selector(
+                    'button[class="profile-buttons-modal-buttons-cta blue-new flatbutton"]',
+                    click_element=True)
+            print("MComposer", self.use_css_selector('div[class="messenger-composer-wrapper"] > textarea[placeholder="Say something…"]',
+                                    input_text=self.arrows[randint(0, len(self.arrows)-1)]))
             self.use_css_selector('button[class="messenger-toolbar-send"]', click_element=True)
         except Exception as ex:
             print(ex)
@@ -147,8 +160,12 @@ class Cupid():
             sleep(1)
             # self.use_css_selector('div[class*="card-content-header__name"]', 30, click_element=True)
             #'use tappy_tap_container ele for screenshot'
-            n_images = len(self.use_css_selector('div[class*="tappy-thumb-indicator"]', siblings=True))
-            print("IMAGES", n_images)
+            try:
+                n_images = len(self.use_css_selector('div[class*="tappy-thumb-indicator"]', 30, siblings=True))
+                print("IMAGES", n_images)
+            except:
+                print("Images didn't load")
+                return
             # _, details = self.use_css_selector('div[class="matchprofile-details-text"]', siblings=True, extract_attribute="text")
             # print("==========================\n" + details + "\n============================")
             if self.match_preferences([], n_images):
@@ -161,7 +178,9 @@ class Cupid():
         except StaleElementReferenceException as ex:
             print("STALE ELEMENT, GO TO DOUBLETAKE!!")
             self.use_css_selector('button[aria-label="Pass"]', click_element=True)
-            # self.browser.get(self.main_page+"/doubletake")
+        except TimeoutException as to:
+            self.browser.get(self.main_page+"/doubletake")
+            
 
     def send_intro_to_likes_who_are_online(self):
         try:
@@ -197,18 +216,27 @@ class Cupid():
         Select(self.use_css_selector('select[aria-label="Location country"]')).select_by_value(country_code)
         self.use_css_selector(
             'input[aria-label="City"]',
-            input_text=city        
+            input_text=city, click_enter=True        
         )
+        sleep(3)
         self.use_css_selector(
-            'button[class="blue flatbutton settings-input-actions-save"]',
-            click_element=True
+            f'input[class="settings-input-field oknf-input oknf-input--success"][value="{city}"]',
+            click_enter=True
         )
-        sleep(5)
-        self.browser.get(self.main_page + "/doubletake")
 
 
 if __name__ == "__main__":
+    if not checkForConnection():
+        print("NO INTERNET!!! EXITING")
+        sys.exit(0)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--nation", help="Country abbreviation, like 'IN'")
+    parser.add_argument("--city", help="city within the specified country")
+    parser.add_argument("--only_online", help="dont swipe, just message likes who r online", action="store_true")
+    parser.add_argument("--nSwipes", default=1, help="control the no of swipes u want to make", type=int)
+    args = parser.parse_args()
     options = ChromeOptions()
+    # options.headless = True
     mobile_emulation = {
     "deviceMetrics": { "width": 375, "height": 612},
     "userAgent": "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Mobile Safari/537.36"
@@ -220,12 +248,23 @@ if __name__ == "__main__":
     cupid_auto_obj = Cupid(chrome)
     cupid_auto_obj.login()
     cupid_auto_obj.get_started()
-    cupid_auto_obj.change_location('GB', 'london')
 
-    for u in range(2):
-        cupid_auto_obj.get_profile()
-    cupid_auto_obj.send_intro_to_likes_who_are_online()
+    if args.nation and args.city:
+        print(f"CHANGING LOCATION TO {args.nation}, {args.city}")
+        cupid_auto_obj.change_location(args.nation, args.city)
 
-# /settings
-# select[aria-label="Location country"] > option[value="BR"] click
-# input[aria-label="City"] input text 
+    if args.only_online:
+        print(f"SENDING ONLY INTROS")
+        cupid_auto_obj.send_intro_to_likes_who_are_online()
+
+    if args.nSwipes > 0:
+        print(f"THE FULL HOUSE")
+        cupid_auto_obj.browser.get(cupid_auto_obj.main_page + "/doubletake")
+        for u in range(args.nSwipes):
+            cupid_auto_obj.get_profile()
+        cupid_auto_obj.send_intro_to_likes_who_are_online()
+        
+    # sleep(5)
+    chrome.quit()
+
+# NExt up change age bracket 
